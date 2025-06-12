@@ -1,153 +1,243 @@
 version: '3.8'
 
 services:
-  # PostgreSQL - Para Auth, Event, Marketplace, Payment
   postgres:
     image: postgres:15-alpine
     container_name: jiu_jitsu_postgres
     environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres123
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
     ports:
-      - "5433:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./database/init:/docker-entrypoint-initdb.d
+      - postgres_data:/var/lib/postgresql/data:Z
+      - ./database/init:/docker-entrypoint-initdb.d:ro,Z
     networks:
       - jiu_jitsu_network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    user: postgres
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
-  # Redis - Caché global y colas
   redis:
     image: redis:7-alpine
     container_name: jiu_jitsu_redis
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --appendonly yes
+      --appendfsync everysec
+      --auto-aof-rewrite-percentage 100
+      --auto-aof-rewrite-min-size 64mb
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --tcp-keepalive 60
+      --timeout 300
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
+      - redis_data:/data:Z
     networks:
       - jiu_jitsu_network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    user: redis
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD", "redis-cli", "--no-auth-warning", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
-  # MongoDB - Para Notification Service y Analytics
   mongodb:
     image: mongo:7.0
     container_name: jiu_jitsu_mongodb
     environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: mongodb123
-      MONGO_INITDB_DATABASE: notifications_db
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DB:-notifications_db}
     ports:
-      - "27017:27017"
+      - "${MONGO_PORT:-27017}:27017"
     volumes:
-      - mongodb_data:/data/db
-      - ./database/mongo-init:/docker-entrypoint-initdb.d
+      - mongodb_data:/data/db:Z
+      - ./database/mongo-init:/docker-entrypoint-initdb.d:ro,Z
     networks:
       - jiu_jitsu_network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: mongod --auth --bind_ip_all --logpath /var/log/mongodb/mongod.log
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
-  # Elasticsearch - Para búsquedas avanzadas en Marketplace
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
     container_name: jiu_jitsu_elasticsearch
     environment:
       - discovery.type=single-node
-      - xpack.security.enabled=false
+      - xpack.security.enabled=true
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - xpack.security.enrollment.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.transport.ssl.enabled=false
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
     ports:
-      - "9200:9200"
-      - "9300:9300"
+      - "${ELASTIC_PORT:-9200}:9200"
     volumes:
-      - elasticsearch_data:/usr/share/elasticsearch/data
+      - elasticsearch_data:/usr/share/elasticsearch/data:Z
     networks:
       - jiu_jitsu_network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      test: ["CMD-SHELL", "curl -s -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 5
 
-  # Kibana - Para visualizar datos de Elasticsearch (desarrollo)
   kibana:
     image: docker.elastic.co/kibana/kibana:8.11.0
     container_name: jiu_jitsu_kibana
     environment:
       - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD}
+      - KIBANA_SYSTEM_PASSWORD=${KIBANA_PASSWORD}
     ports:
-      - "5601:5601"
+      - "${KIBANA_PORT:-5601}:5601"
+    volumes:
+      - kibana_data:/usr/share/kibana/data:Z
     depends_on:
-      - elasticsearch
+      elasticsearch:
+        condition: service_healthy
     networks:
       - jiu_jitsu_network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5601/api/status || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
 
-  # Zookeeper - Para Kafka
   zookeeper:
     image: confluentinc/cp-zookeeper:7.4.0
     container_name: jiu_jitsu_zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+      ZOOKEEPER_ADMIN_ENABLE_SERVER: false
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data:Z
+      - zookeeper_logs:/var/lib/zookeeper/log:Z
     networks:
       - jiu_jitsu_network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "2181"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
-  # Kafka - Mensajería entre servicios
   kafka:
     image: confluentinc/cp-kafka:7.4.0
     container_name: jiu_jitsu_kafka
     depends_on:
-      - zookeeper
-    ports:
-      - "9092:9092"
+      zookeeper:
+        condition: service_healthy
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT_INTERNAL:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT_INTERNAL://kafka:29092,PLAINTEXT_HOST://localhost:${KAFKA_PORT:-9092}
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT_INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: false
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LOG_SEGMENT_BYTES: 1073741824
+    ports:
+      - "${KAFKA_PORT:-9092}:9092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data:Z
     networks:
       - jiu_jitsu_network
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 5
 
 networks:
   jiu_jitsu_network:
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: jiu_jitsu_br0
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
 
 volumes:
   postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_DIR:-./docker-volumes}/postgres
   redis_data:
+    driver: local  
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_DIR:-./docker-volumes}/redis
   mongodb_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_DIR:-./docker-volumes}/mongodb
   elasticsearch_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_DIR:-./docker-volumes}/elasticsearch
   kibana_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_DIR:-./docker-volumes}/kibana
   zookeeper_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_DIR:-./docker-volumes}/zookeeper
   zookeeper_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_DIR:-./docker-volumes}/zookeeper-logs
   kafka_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_DIR:-./docker-volumes}/kafka
