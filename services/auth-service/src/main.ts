@@ -1,8 +1,12 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, Logger } from '@nestjs/common';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
+import { ValidationPipe } from '../src/pipes/validation.pipe';
+import { HttpExceptionFilter } from './filters/http-exception.filter';
+import { AllExceptionsFilter } from '../src/filters/all-exception.filter';
+import { TransformInterceptor } from './interceptors/transform.interceptor';
+import { LoggingInterceptor } from './interceptors/logging.interceptor';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -10,56 +14,71 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
 
-  // Global pipes
-  app.useGlobalPipes(new ValidationPipe({
-    transform: true,
-    whitelist: true,
-    forbidNonWhitelisted: true,
-  }));
+  // Global pipes - usando nuestro ValidationPipe personalizado
+  app.useGlobalPipes(new ValidationPipe());
+
+  // Global filters
+  app.useGlobalFilters(
+    new AllExceptionsFilter(),
+    new HttpExceptionFilter(),
+  );
+
+  // Global interceptors
+  app.useGlobalInterceptors(
+    new LoggingInterceptor(),
+    new TransformInterceptor(),
+  );
 
   // CORS configuration
   const allowedOrigins = configService.get('ALLOWED_ORIGINS', 'http://localhost:3000').split(',');
   app.enableCors({
     origin: allowedOrigins,
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
   
   logger.log(`🌐 CORS enabled for origins: ${allowedOrigins.join(', ')}`);
 
-  // Swagger documentation
-  const config = new DocumentBuilder()
-    .setTitle('Jiu Jitsu Platform - Auth Service')
-    .setDescription('Authentication and authorization service for the Jiu Jitsu platform')
-    .setVersion('1.0')
-    .addBearerAuth()
-    .addTag('auth')
-    .addTag('users')
-    .build();
+  // Global prefix for all routes
+  app.setGlobalPrefix('api/v1');
 
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
-  
-  logger.log(`📚 Swagger documentation available at /api/docs`);
-
-  // Health check endpoint
+  // Health check endpoint (disponible sin prefix)
   app.getHttpAdapter().get('/health', (req, res) => {
     res.status(200).json({
       status: 'ok',
       timestamp: new Date().toISOString(),
       service: 'auth-service',
       version: '1.0.0',
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
     });
+  });
+
+  // Graceful shutdown
+  process.on('SIGTERM', async () => {
+    logger.log('🛑 SIGTERM received, shutting down gracefully...');
+    await app.close();
+    process.exit(0);
+  });
+
+  process.on('SIGINT', async () => {
+    logger.log('🛑 SIGINT received, shutting down gracefully...');
+    await app.close();
+    process.exit(0);
   });
 
   const port = configService.get('PORT', 3001);
   await app.listen(port);
   
   logger.log(` Auth Service successfully started on port ${port}`);
-  logger.log(` API Documentation: http://localhost:${port}/api/docs`);
-  logger.log(`  Health Check: http://localhost:${port}/health`);
+  logger.log(` Health Check: http://localhost:${port}/health`);
+  logger.log(` API Base URL: http://localhost:${port}/api/v1`);
+  logger.log(` Auth endpoints: http://localhost:${port}/api/v1/auth`);
 }
 
 bootstrap().catch(error => {
   const logger = new Logger('Bootstrap');
   logger.error('💥 Failed to start application', error.stack);
+  process.exit(1);
 });
