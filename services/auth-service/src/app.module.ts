@@ -5,6 +5,10 @@ import { JwtModule } from '@nestjs/jwt';
 import { ThrottlerModule } from '@nestjs/throttler';
 
 import { CommunicationModule } from './communication/communication.module';
+import { UserService } from './services/user.service';
+import { AuthController } from './controllers/auth.controller';
+import { AuthService } from './services/auth.service';
+import { User } from './entities/user.entity';
 
 @Module({
   imports: [
@@ -19,7 +23,7 @@ import { CommunicationModule } from './communication/communication.module';
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
         const logger = new Logger('DatabaseConfig');
-        
+
         const dbConfig = {
           type: 'postgres' as const,
           host: configService.get<string>('DB_HOST', 'localhost'),
@@ -31,12 +35,12 @@ import { CommunicationModule } from './communication/communication.module';
           synchronize: configService.get<string>('NODE_ENV') === 'development',
           logging: configService.get<string>('NODE_ENV') === 'development',
         };
-        
+
         logger.log(`🔗 Connecting to PostgreSQL`);
         logger.log(`Host: ${dbConfig.host}:${dbConfig.port}`);
         logger.log(`Database: ${dbConfig.database}`);
         logger.log(`User: ${dbConfig.username}`);
-        
+
         return dbConfig;
       },
     }),
@@ -47,17 +51,17 @@ import { CommunicationModule } from './communication/communication.module';
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
         const logger = new Logger('JwtConfig');
-        
+
         const jwtConfig = {
           secret: configService.get<string>('JWT_SECRET', 'fallback-secret'),
           signOptions: {
             expiresIn: configService.get<string>('JWT_EXPIRES_IN', '15m'),
           },
         };
-        
+
         logger.log(`🔐 JWT Configuration loaded`);
         logger.log(`⏰ Token expires in: ${jwtConfig.signOptions.expiresIn}`);
-        
+
         return jwtConfig;
       },
     }),
@@ -67,7 +71,7 @@ import { CommunicationModule } from './communication/communication.module';
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
         const logger = new Logger('ThrottlerConfig');
-        
+
         const throttlerConfig = [
           {
             name: 'short',
@@ -75,15 +79,19 @@ import { CommunicationModule } from './communication/communication.module';
             limit: configService.get<number>('THROTTLE_LIMIT', 10),
           },
         ];
-        
+
         logger.log(`🛡️  Rate limiting configured`);
         logger.log(`⏱️  TTL: ${throttlerConfig[0].ttl}ms, Limit: ${throttlerConfig[0].limit} requests`);
-        
+
         return throttlerConfig;
       },
     }),
 
+    TypeOrmModule.forFeature([User]),
     CommunicationModule,
   ],
+  controllers: [AuthController],
+  providers: [AuthService, UserService],
+
 })
-export class AppModule {}
+export class AppModule { }

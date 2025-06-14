@@ -9,7 +9,7 @@ import {
   BeforeUpdate,
 } from 'typeorm';
 import { Exclude } from 'class-transformer';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 
 export enum UserRole {
   USER = 'user',
@@ -27,7 +27,6 @@ export enum UserStatus {
 }
 
 @Entity('users')
-@Index(['email'], { unique: true })
 @Index(['status'])
 @Index(['roles'])
 export class User {
@@ -41,7 +40,6 @@ export class User {
   lastName: string;
 
   @Column({ unique: true, length: 255 })
-  @Index()
   email: string;
 
   @Column()

@@ -16,8 +16,8 @@ import {
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { AuthService } from '../services/auth.service';
 import { UserService } from '../services/user.service';
-import { JwtAuthGuard } from '../guards/jwt-auth.guard';
-import { RolesGuard } from '../guards/roles.guard';
+import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../decorators/roles.decorator';
 import { User, UserRole } from '../entities/user.entity';
 import {
@@ -39,7 +39,7 @@ import {
   UpdateUserRolesDto,
 } from '../dto/user.dto';
 
-@Controller('api/v1/auth')
+@Controller('auth')
 @UseGuards(ThrottlerGuard)
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
