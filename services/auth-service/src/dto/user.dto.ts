@@ -73,8 +73,12 @@ export class UpdateProfileDto {
   lastName?: string;
 
   @IsOptional()
-  @IsPhoneNumber()
-  @MaxLength(20)
+  @IsString()
+  @MinLength(7)
+  @MaxLength(25)
+  @Matches(/^[+\d\s\-\(\)]+$/, {
+    message: 'Phone number can only contain numbers, spaces, hyphens, parentheses and plus sign'
+  })
   phoneNumber?: string;
 
   @IsOptional()

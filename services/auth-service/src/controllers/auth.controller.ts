@@ -47,7 +47,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly userService: UserService,
-  ) {}
+  ) { }
 
   // ========== PUBLIC ENDPOINTS ==========
 
@@ -122,7 +122,7 @@ export class AuthController {
   @Patch('profile')
   @UseGuards(JwtAuthGuard)
   async updateProfile(
-    @Request() req,
+    @Request() req: { user: { id: string } },
     @Body() updateProfileDto: UpdateProfileDto,
   ): Promise<UserResponseDto> {
     return this.userService.updateProfile(req.user.id, updateProfileDto);
@@ -145,7 +145,9 @@ export class AuthController {
   @Post('logout')
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  async logout(@Request() req, @Body() logoutDto: LogoutDto): Promise<SuccessResponseDto> {
+  async logout(
+    @Request() req: { user: { id: string } },
+    @Body() logoutDto: LogoutDto): Promise<SuccessResponseDto> {
     await this.authService.logout(req.user.id, logoutDto.allDevices);
     return {
       success: true,
@@ -197,7 +199,7 @@ export class AuthController {
   }
 
 
-    private toUserResponse(user: User): UserResponseDto {
+  private toUserResponse(user: User): UserResponseDto {
     return {
       id: user.id,
       firstName: user.firstName,

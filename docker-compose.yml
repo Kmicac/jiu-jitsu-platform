@@ -194,50 +194,10 @@ networks:
 
 volumes:
   postgres_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DATA_DIR:-./docker-volumes}/postgres
   redis_data:
-    driver: local  
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DATA_DIR:-./docker-volumes}/redis
   mongodb_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DATA_DIR:-./docker-volumes}/mongodb
   elasticsearch_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DATA_DIR:-./docker-volumes}/elasticsearch
   kibana_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DATA_DIR:-./docker-volumes}/kibana
-  zookeeper_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DATA_DIR:-./docker-volumes}/zookeeper
-  zookeeper_logs:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DATA_DIR:-./docker-volumes}/zookeeper-logs
   kafka_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${DATA_DIR:-./docker-volumes}/kafka
+  zookeeper_data:
+  zookeeper_logs:

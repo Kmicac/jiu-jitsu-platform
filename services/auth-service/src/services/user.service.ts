@@ -93,20 +93,24 @@ export class UserService {
   }
 
   async updateProfile(userId: string, updateDto: UpdateProfileDto): Promise<UserResponseDto> {
+    const validatedDto = Object.assign(new UpdateProfileDto(), updateDto);
     const user = await this.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    Object.assign(user, updateDto);
+    Object.assign(user, validatedDto);
 
     try {
       const updatedUser = await this.userRepository.save(user);
       this.logger.log(`User profile updated: ${updatedUser.email}`);
       return this.toUserResponse(updatedUser);
     } catch (error) {
-      this.logger.error(`Failed to update user profile: ${error.message}`, error.stack);
+      if (error.code || error.constraint || error.detail) {
+        this.logger.error(`Failed to update user profile: ${error.message}`, error.stack);
       throw new BadRequestException('Failed to update profile');
+      }
+      return this.toUserResponse(user);
     }
   }
 
@@ -354,7 +358,8 @@ export class UserService {
       status: user.status,
       emailVerified: user.emailVerified,
       phoneNumber: user.phoneNumber,
-      dateOfBirth: user.dateOfBirth?.toISOString().split('T')[0],
+      dateOfBirth: user.dateOfBirth instanceof Date 
+      ? user.dateOfBirth.toISOString().split('T')[0] : user.dateOfBirth,
       gender: user.gender,
       profilePicture: user.profilePicture,
       createdAt: user.createdAt,

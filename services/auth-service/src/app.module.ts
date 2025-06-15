@@ -9,6 +9,8 @@ import { UserService } from './services/user.service';
 import { AuthController } from './controllers/auth.controller';
 import { AuthService } from './services/auth.service';
 import { User } from './entities/user.entity';
+import { PassportModule } from '@nestjs/passport';
+import { JwtStrategy } from './strategies/jwt.strategy';
 
 @Module({
   imports: [
@@ -17,6 +19,8 @@ import { User } from './entities/user.entity';
       envFilePath: ['.env', '../.env', '../../.env'],
       ignoreEnvFile: false,
     }),
+
+    PassportModule.register({ defaultStrategy: 'jwt' }),
 
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -91,7 +95,10 @@ import { User } from './entities/user.entity';
     CommunicationModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, UserService],
+  providers: [
+    AuthService, 
+    UserService, 
+    JwtStrategy],
 
 })
 export class AppModule { }
